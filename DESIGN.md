@@ -206,3 +206,33 @@ decoration. The route ledge is tracked explicitly now.
 
 Worth noting what caught it: not the solver, which was perfectly happy — those steps were all
 reachable — but a tool written to answer a *design* question about how hard the climb was.
+
+---
+
+## The instruction line was printing over the game
+
+Each page carries one line of non-game chrome: the controls, for anyone who lands on it cold. It
+was `position: fixed; bottom: 6px` while the canvas was sized to `innerHeight - 8`.
+
+Those two numbers are only compatible by luck. The canvas rounds down to a whole multiple of 240,
+so the leftover slack is whatever the rounding happens to leave — and the line is about 17px tall.
+A sweep of fourteen window heights found the line printing across the bottom of the game at **five
+of them**, including 728, 740 and 760, which is to say on an ordinary laptop. It was in every
+screenshot in `out/`, in all three games, and nobody had looked at the bottom fourteen pixels.
+
+The line is part of the layout now — a flex column, canvas then line — and `fit()` reserves its
+**measured** height rather than a guessed constant, because it wraps to two rows on a narrow phone.
+
+A related non-bug worth recording, because an hour went into it: a mobile harness reported the
+canvas scaling at `3.99999609375` device pixels per source pixel and flagged it as fractional. It
+was not. The browser rounds the CSS width it reports to three decimals, and the test was reading
+that string back instead of the laid-out box. Measured from `getBoundingClientRect`, the scale is
+exactly 4. The renderer's guarantee held; the instrument was wrong.
+
+## A tap is not a hold
+
+The same harness reported that Filament's monarch never moved and that The Far Light recorded zero
+jumps, across twelve rounds of taps. Both games were fine. `touchscreen.tap()` is a pointerdown and
+a pointerup in the same millisecond, which can land entirely between two ticks of a 60Hz simulation
+— so the test said "nothing happened" about a game that works, and would have said exactly the same
+about one that did not. Replaced with a real press-wait-release. Both games pass.

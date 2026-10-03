@@ -76,7 +76,8 @@ function canReach(plats, a, b) {
 function make(seed) {
   const rng = makeRng(seed);
   const plats = [{ x: WALL, y: WORLD_H - 26, w: SW - WALL * 2, h: 8, spine: true }];
-  const top = 170;
+  // the climb ends near the TOP of the final screen, not two-thirds of the way down it
+  const top = 64;
   let dir = 1;
   const route = [];
 

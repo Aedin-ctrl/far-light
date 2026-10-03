@@ -144,3 +144,30 @@ and the proof use it.
   when the landing test runs, misses, and is then pushed into the ledge's side by the horizontal
   step — a bounce instead of a landing. Whole ledges were unreachable for that reason alone, and
   it would have felt like the game cheating.
+
+---
+
+# 8. Verification
+
+Four things, each answering a different question.
+
+| tool | question it answers | result |
+|---|---|---|
+| `tools/solve.mjs` | is every ledge reachable from the floor? | **94–103 of 103 ledges, all twelve screens, the lamp room reachable** |
+| `tools/stress.mjs` | can the physics put the climber somewhere the game cannot get them out of? | **nothing broken in 1500 minutes of climbing**, across four policies: random mashing, holding the button forever, tapping every other tick, and trying to climb |
+| the route plan inside `stress.mjs` | does every step of the route have a jump that makes it? | **88 of 88 steps**, once stance is allowed to vary — ten of them need the climber standing at a particular end of the ledge, which is the kind of thing a player works out and a naive test does not |
+| `tools/climb.mjs` | can the whole thing actually be played to the end? | **all 87 steps, to the lamp, in 79.5 seconds of play** |
+
+The last one is the one that matters. The solver's answer is about geometry; this one is a sequence
+of button presses, run through the real simulation, that finishes the game.
+
+### What the invariants watch
+
+A platformer's dangerous failures are not crashes. They are the climber ending up somewhere the
+game did not intend and cannot recover from, none of which throws:
+
+- inside a ledge — the one failure a player would call "the game is broken"
+- through the floor, or outside the shaft
+- a speed the rules cannot produce
+- winding up in mid-air
+- and a watchdog for the soft-lock proper: nothing has moved in ten seconds and no button is down

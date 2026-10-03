@@ -236,3 +236,74 @@ jumps, across twelve rounds of taps. Both games were fine. `touchscreen.tap()` i
 a pointerup in the same millisecond, which can land entirely between two ticks of a 60Hz simulation
 — so the test said "nothing happened" about a game that works, and would have said exactly the same
 about one that did not. Replaced with a real press-wait-release. Both games pass.
+
+---
+
+## The council pass, and the two claims that were not true
+
+A reviewer with fresh eyes drove the live game in a real browser and measured the tower
+independently. Most of what it found was in `main.mjs` and `render.mjs` — which no tool in this
+repo imports, and which is therefore where everything serious was.
+
+### The game was uncompletable on a phone. Again, and in the opposite direction.
+
+The first touch scheme set `hold: true` for every touch, so you could jump and never walk. The fix
+**partitioned** the screen into three exclusive zones — outer thirds walk, middle winds up — which
+made `touch.hold` and `touch.left/right` mutually exclusive. And `sim.mjs` only writes the lean
+*inside* the hold branch. So on a phone the lean was permanently 0 and every jump went dead
+vertical. Measured against the real physics: **0 of 76 route steps are makeable with no lean.** Not
+most of them. None. You cannot clear the first one.
+
+One bug traded for its mirror image, both shipped, both invisible to every test that pressed a key.
+Touches are now tracked per `pointerId` and the zones overlap, so one thumb can charge and lean at
+once — verified by driving real pointer events and checking the horizontal velocity of the jump
+that comes out.
+
+### The soak harness had never climbed past screen 1
+
+`tools/stress.mjs` reported *300 runs, 1800 minutes of climbing, nothing broken*. It also reported,
+in a line nobody read, `reached screen 1 of 11 at best`.
+
+The `router` policy stopped walking once it was within 1.5px of the stance its plan was solved for,
+and several steps on this route have a stance band four to eight pixels wide — so it climbed to
+route index 11, failed, fell to 6, climbed again, and repeated for the full three simulated
+minutes, every run. **Every invariant in this project had therefore never once been evaluated on
+five sixths of the tower**, while the summary line said *nothing broken*.
+
+The tolerance is 0.4px now. The router reaches the lamp on every run, and the harness prints
+`THE HARNESS BARELY CLIMBED` and exits non-zero if it ever stops short again. Re-run: **750 runs,
+3,827 minutes, every screen, nothing broken** — which now means something.
+
+### The shake was framerate-dependent
+
+`camera.trauma` decayed inside `updateCamera`, which `render()` calls — so once per rendered frame
+rather than once per tick. Measured: 34 sim ticks to decay at 60Hz, **0 ticks at an unlocked frame
+rate**. The fall is the biggest reaction this game has and it was half as long at 120Hz and a third
+as long at 144, which is most displays now. The two `cosmetic` draws for the shake offset were on
+the same per-frame path, which quietly undid the argument for having a separate cosmetic stream at
+all. Both are on the tick clock now: 34 ticks at 17 frames and at 778.
+
+### Smaller, all real
+
+- `fit()` computed the hint's reserved height and **never used it** — because the edit that was
+  meant to patch the maths matched the words `innerHeight - 8` inside its own comment. The overlap
+  went away, so the test passed, while the canvas was pushed up and clipped at the top at the same
+  window heights as before. `tools/overlap.mjs` now checks clipping and the hint being off-screen,
+  not just overlap.
+- Hiding the tab set `paused` and nothing ever cleared it. The escape is the letter P, which is not
+  in the hint line, not on the title screen, and not on a phone at all.
+- `tools/robust.mjs`'s "backgrounding" test dispatched `visibilitychange` while `document.hidden`
+  was still false, so the only branch it ever ran was the one that resumes. The test that existed
+  to catch the bug above tested the opposite case.
+- A pointer hold survived `blur`: alt-tab while charging and you came back wound to maximum.
+- `restart()` never cleared the held keys, so pressing R — or holding space on the ending screen,
+  which says *press space* — began the new run already at full charge.
+- `music.reset()` was written for a real bug ("a second climb opens a fifth too high") and was
+  never called by anything.
+- The altimeter's never-reached marks were drawn in palette entry 2, which at the base of the tower
+  is the same dark blue as the mortar behind them — invisible exactly where *how far is there to
+  go* is worth knowing. The comment two lines above already said entry 3.
+- `tools/maketower.mjs` set `lamp: true` on the final route ledge and then dropped it from its own
+  serializer.
+- Particles were handed the shake offset on top of a transform that already included it, so dust
+  slid vertically against the ledges it was sitting on.

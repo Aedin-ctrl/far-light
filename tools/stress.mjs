@@ -123,7 +123,15 @@ function router(rng, held, tick, state, memo) {
   // walk to the stance the plan needs before winding up
   const a = route[here];
   const stance = a.x + 1 + Math.max(0, a.w - RULES.body.w - 2) * plan.frac;
-  if (!p.charging && Math.abs(p.x - stance) > 1.5) {
+  // Stand WHERE THE PLAN SAYS, not within a pixel and a half of it.
+  //
+  // The plan's charge and lean were solved for an exact stance, and several steps on this route
+  // have a stance band only four to eight pixels wide — so landing 1.5px off made the next jump
+  // impossible. The router climbed to route index 11, failed, fell back to 6, climbed again, and
+  // repeated for the full three simulated minutes. Three hundred runs and 1,800 minutes of
+  // "nothing broken" were 1,800 minutes of flailing at the bottom of the tower: every invariant in
+  // the project had never once run on screens 2 through 11.
+  if (!p.charging && Math.abs(p.x - stance) > 0.4) {
     return { hold: false, left: p.x > stance, right: p.x < stance };
   }
   const want = Math.round(RULES.charge * plan.charge);
@@ -175,5 +183,15 @@ for (const name of names) {
 const secs = (Date.now() - t0) / 1000;
 console.log(`\n${runs} runs, ${(ticks / TPS / 60).toFixed(0)} minutes of climbing in ${secs.toFixed(1)}s`);
 console.log(`  reached screen ${bestScreen} of 11 at best, ${wins} reached the lamp`);
+
+// Coverage, stated out loud.
+//
+// "Nothing broken" is a claim about the code that ran. For three hundred runs this harness never
+// climbed past screen 1, so every invariant in the project — inside a ledge, through the floor,
+// out of the shaft, winding up in mid-air — had never once been evaluated on five sixths of the
+// tower, and the summary line said `nothing broken` the whole time.
+if (bestScreen < 8) {
+  console.log(`  *** THE HARNESS BARELY CLIMBED: screen ${bestScreen} of 11 is not coverage ***`);
+}
 console.log(fails ? `\n${fails} FAILURES` : '\nnothing broken');
-process.exit(fails ? 1 : 0);
+process.exit(fails || bestScreen < 8 ? 1 : 0);

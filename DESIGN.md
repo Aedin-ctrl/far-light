@@ -1,0 +1,146 @@
+# THE FAR LIGHT
+
+> At the end of Filament the Far Light takes current, throws its beam out over the water, and
+> something out there answers with a light of its own.
+>
+> This is you climbing up to see what.
+
+A one-verb precision climber, in the same world and on the same engine as
+[Filament](../Filament/DESIGN.md). Built second, in an evening, on infrastructure that already
+existed — which is the whole argument for having built the first one properly.
+
+---
+
+## 1. The one verb
+
+Hold the button. Let go. That is the entire control scheme.
+
+- **Hold** to wind up. The charge builds over ~0.55s and the lineman crouches lower as it grows.
+- **Steer while charging.** Whichever way you are leaning when you *release* is the way you go.
+- **Release** to jump. No air control at all — once you are off the ground the jump is cast.
+- **Walls bounce you.** Hitting a wall mid-flight reverses you at 70% speed, which is the single
+  most important rule in the game: it is how you reach places you cannot jump to directly, and it
+  is how a good jump becomes a disaster.
+- **Falling costs nothing but height.** There is no damage, no lives, no checkpoints, no score.
+  The punishment for a bad jump is being somewhere you already were, which is Jump King's whole
+  idea and it is a good one.
+
+Nothing else. No double jump, no wall-grab, no ledge-assist. Every metre you gain is a jump you
+aimed.
+
+## 2. The climb
+
+A tower in cross-section, climbed one screenful at a time. The camera does not scroll smoothly —
+it snaps a whole screen when you cross a floor boundary, which is what makes falling two screens
+feel like falling two screens.
+
+**Twelve screens**, each hand-laid as a small set of platforms rather than generated, because a
+precision platformer lives entirely on whether a specific jump is possible and that is not
+something to leave to a seed. Roughly:
+
+| screens | what they teach |
+|---|---|
+| 1–2 | the charge. Wide platforms, short gaps, nothing punishing. You cannot fall below screen 1. |
+| 3–4 | the bounce. The first gap that cannot be crossed without using a wall. |
+| 5–7 | commitment. Long drops below you, so a missed jump costs real height. |
+| 8–10 | precision. Narrow ledges, tight ceilings, jumps that need a part-charge rather than a full one. |
+| 11–12 | the lamp room, and what is outside it. |
+
+## 3. The look
+
+The same hard constraints as Filament, using the same `pixel.mjs`: **256 × 240, 25 colours, 8 × 8
+grid, no alpha**, and an indexed framebuffer so the palette budget holds by construction.
+
+The difference is vertical. Filament is a long horizontal coast at night; this is a tall stone
+shaft with the sea outside the windows, getting lighter as you climb — the palette rotates from
+near-black at the base to dawn at the top, so **height is legible as colour**. By the lamp room you
+are above the weather.
+
+## 4. What it reuses
+
+| from Filament | unchanged? |
+|---|---|
+| `pixel.mjs` — indexed framebuffer, sprites, dither, lamps, font | yes, verbatim |
+| `rng.mjs` — seeded streams | yes, verbatim |
+| the fixed-timestep loop, input handling, integer scaling, visibility pause | same shape, rewritten for one verb |
+| the WebAudio APU | same voices, new sounds |
+
+Everything else is new: physics, collision, the tower, the climb.
+
+## 5. Scope
+
+One sitting. It is a demo like Filament is a demo — a complete arc with a beginning, a middle and
+an ending, built so the systems under it could carry more.
+
+## 6. Log
+
+**2026-10-02 23:45** — Started after Filament shipped and deployed. The point of this one is partly
+the game and partly the proof: the second game on a renderer you own is an evening, not a week.
+
+---
+
+# 7. Building the tower: four attempts
+
+The climb is the whole game, and whether a specific jump is possible is not something that can be
+eyeballed. This took four goes, and each failure was a different shape of the same mistake —
+*believing* a level was climbable instead of *proving* it.
+
+### Attempt 1 — hand-authored, twelve screens
+
+Each screen laid out by hand in its own local coordinates. It looked right. The solver found that
+the top ledge of one screen sat **184 pixels below** the bottom ledge of the next, and the jump
+reaches 69. Authoring screens separately and hoping the seams line up does not work, and nothing
+short of playing the whole thing would ever have shown it.
+
+### Attempt 2 — generated under a rule: never place a ledge above another
+
+The thinking: if a ledge sits directly above you, jumping up hits its **underside** and you drop
+back, so forbid that and the climb is safe. True as far as it goes, and it produced a route that
+fled to the far wall whenever it was boxed in, leaving a 164px gap nobody could cross.
+
+The flaw is structural: **a switchback climb must pass back over itself**. That is what a switchback
+is. A rule banning it bans climbing a narrow shaft at all.
+
+### Attempt 3 — search random seeds until one is climbable
+
+Right in spirit — whether a tower is climbable is a question to be answered by playing it, not by a
+rule — and far too slow. Minutes per seed, with no guarantee any seed in range works.
+
+### Attempt 4 — generate, verify, repair
+
+What it does now, in `tools/maketower.mjs`:
+
+1. **Generate** a candidate step: a rise, a width, a position anywhere in the shaft.
+2. **Verify** it by flying every stance, charge and lean through the real physics. First candidate
+   that actually works, wins. There is deliberately *no rule* about where a ledge may go relative
+   to the one below — there is a function right here that knows.
+3. **Repair**: every step is proven against the tower *as it stood when it was placed*, and a ledge
+   added later can roof one that used to be fine. So the finished route is re-proven end to end,
+   and anything broken is fixed — first by removing whatever decoration is in the way, then by
+   moving the step itself, with the constraint that the step *after* it stays makeable too.
+   Fixing one rung by shoving it somewhere that strands the next one just moves the hole up.
+4. **Commit the result as data**, so the game never does any of this and everyone climbs the same
+   tower.
+
+### The bug underneath all of it
+
+The tool carried its **own copy of the jump arithmetic**. It drifted from the game's, and it
+certified a tower as fully climbable that the real game could not get past the second screen.
+
+That is the oldest trap in verification: a checker that re-implements the thing it checks is
+checking itself. `tools/maketower.mjs` now imports `step` from `src/sim.mjs` and runs candidate
+towers through `usePlatforms`, so there is exactly one implementation of the jump and both the game
+and the proof use it.
+
+## 7.1 Other things the solver found
+
+- **Ground has to be detected by probing a pixel below, not by overlap.** At rest the body sits
+  exactly on top of a ledge and so does not overlap it at all — an overlap test says "airborne" on
+  every tick you are not actively falling into something. The player left the ground the instant
+  they stopped moving, which cancelled the wind-up one tick after it started. Every jump came out
+  as a stumble and *nothing in the tower was reachable*.
+- **Horizontal must resolve before vertical.** The other order clips corners: the vertical sweep
+  tests against last tick's x, so a body arcing onto the left edge of a ledge is still left of it
+  when the landing test runs, misses, and is then pushed into the ledge's side by the horizontal
+  step — a bounce instead of a landing. Whole ledges were unreachable for that reason alone, and
+  it would have felt like the game cheating.

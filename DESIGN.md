@@ -171,3 +171,38 @@ game did not intend and cannot recover from, none of which throws:
 - a speed the rules cannot produce
 - winding up in mid-air
 - and a watchdog for the soft-lock proper: nothing has moved in ten seconds and no button is down
+
+---
+
+# 9. What the climb actually asks of you
+
+The route was measured after the council pointed out that it did not ask anything. Before:
+
+| | before | after |
+|---|---|---|
+| step rise | min 8, **median 34, max 34** — effectively one value | min 18, **median 38, max 54** |
+| mix | all one length | 31 short · 26 standard · 19 near the 69px apex |
+| **a full charge makes** | **85% of steps** | **72%** |
+| smallest usable charge window | **1 tick** (17ms — not aimable by a person) | **6 ticks** (100ms) |
+| steps needing a window of 8 ticks or less | 3 | **24 of 76** |
+
+The first version scored candidate ledges by preferring the biggest rise available, which pinned
+every step in the tower to exactly 34px. A full charge was then the right answer five times out of
+six, and the wind-up, the crouch and the whole one-verb skill were decoration on most of the climb.
+Each step now draws a target rise from a mix and the generator aims for it.
+
+**And the generator requires a step to be aimable, not merely solvable.** `canReach` demands a run
+of at least three consecutive charge values that work from the same stance and lean, and records
+the middle of that run as the plan. A step that works for exactly one value of a thirty-three-tick
+wind-up is a seventeen-millisecond release: possible, and not a thing to ask of a person.
+
+## 9.1 A bug the route measurements exposed
+
+Four steps had rises of 13, 5, 0 and **minus seven** — a route that went sideways and occasionally
+downhill. The generator read `plats[plats.length - 1]` as "the ledge we are standing on", but that
+is the last thing *added*, and a decorative side ledge is pushed after the route ledge it hangs
+off, ten to twenty-six pixels below it. So every step following a decoration was measured from the
+decoration. The route ledge is tracked explicitly now.
+
+Worth noting what caught it: not the solver, which was perfectly happy — those steps were all
+reachable — but a tool written to answer a *design* question about how hard the climb was.

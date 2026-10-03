@@ -58,15 +58,30 @@ function fly(plats, fromX, fromY, charge, lean) {
   return -1;
 }
 
-/** Can you get from ledge `a` onto ledge `b`, with any stance, charge or lean? */
+/**
+ * Can you get from ledge `a` onto ledge `b` — and can a PERSON?
+ *
+ * A step that works for exactly one value of the charge is possible without being playable: the
+ * wind-up is thirty-three ticks long, so a one-tick window is a seventeen-millisecond release.
+ * This therefore requires a RUN of consecutive charge values to work from the same stance and
+ * lean, which is the difference between a step that is solvable and a step that is aimable.
+ */
+const MIN_WINDOW = 3;
+
 function canReach(plats, a, b) {
   const target = plats.indexOf(b);
   if (target < 0) return null;
-  for (let s = 0; s < 5; s++) {
-    const x = a.x + 1 + (Math.max(0, a.w - BODY.w - 2) * s) / 4;
-    for (let c = 2; c <= 14; c++) {
-      for (const lean of [-1, 0, 1]) {
-        if (fly(plats, x, a.y - BODY.h, c / 14, lean) === target) return { charge: c / 14, lean };
+  for (let si = 0; si < 5; si++) {
+    const x = a.x + 1 + (Math.max(0, a.w - BODY.w - 2) * si) / 4;
+    for (const lean of [-1, 0, 1]) {
+      let run = 0, first = 0;
+      for (let c = 2; c <= 14; c++) {
+        if (fly(plats, x, a.y - BODY.h, c / 14, lean) === target) {
+          if (run === 0) first = c;
+          run++;
+          // aim for the middle of the window, so the recorded plan is the forgiving one
+          if (run >= MIN_WINDOW) return { charge: (first + Math.floor(run / 2)) / 14, lean };
+        } else run = 0;
       }
     }
   }
@@ -81,8 +96,15 @@ function make(seed) {
   let dir = 1;
   const route = [];
 
-  while (plats[plats.length - 1].y > top + 42) {
-    const cur = plats[plats.length - 1];
+  // `cur` is the last ROUTE ledge, tracked explicitly.
+  //
+  // It used to read plats[plats.length - 1], which is the last thing ADDED — and a decorative side
+  // ledge is pushed after the route ledge it hangs off, sitting ten to twenty-six pixels below it.
+  // So every step that followed a decoration was measured from the decoration, and four steps in
+  // the tower came out with rises of 13, 5, 0 and minus seven: a route that went sideways and
+  // occasionally downhill.
+  let cur = plats[plats.length - 1];
+  while (cur.y > top + 42) {
     let placed = null, how = null;
 
     // Candidates anywhere in the shaft, ordered by how much we would like them, and the first one
@@ -92,14 +114,26 @@ function make(seed) {
     // earlier version only looked beside the current ledge, which made the very first step
     // impossible because the floor spans the whole shaft — and more importantly, a rule like that
     // is a guess about what is reachable when there is a function right here that knows.
+    // Pick a TARGET rise for this step from a mix, then prefer candidates near it.
+    //
+    // Scoring simply preferred the biggest rise available, which pinned every single step in the
+    // tower to exactly 34px — so a full charge was a winning jump on 85% of them and the wind-up,
+    // the crouch and the whole one-verb skill were decorative on five sixths of the climb. A mix
+    // of short hops, standard steps and reaches near the 69px apex means the charge has to be
+    // judged every time.
+    const roll = rng.next();
+    const target = roll < 0.45 ? rng.int(18, 28)
+                 : roll < 0.80 ? rng.int(32, 46)
+                 :               rng.int(52, 64);
+
     const cands = [];
-    for (let rise = 34; rise >= 12; rise -= 4) {
+    for (let rise = 64; rise >= 12; rise -= 2) {
       for (let x = WALL; x <= SW - WALL - 28; x += 10) {
-        const w = Math.min(rng.int(28, 52), SW - WALL - x);
-        if (w < 24) continue;
-        // prefer a big rise, and prefer carrying on the way we were going
+        const w = Math.min(rng.int(26, 50), SW - WALL - x);
+        if (w < 22) continue;
         const across = (x + w / 2) - (cur.x + cur.w / 2);
-        const want = (34 - rise) * 3 + Math.abs(Math.abs(across) - 56) * 0.4
+        const want = Math.abs(rise - target) * 4
+                   + Math.abs(Math.abs(across) - 56) * 0.4
                    + (Math.sign(across) === dir ? 0 : 14);
         cands.push({ x, y: cur.y - rise, w, h: 6, spine: true, want, across });
       }
@@ -124,6 +158,7 @@ function make(seed) {
     }
     plats.push(placed);
     route.push(how);
+    cur = placed;
 
     // a side ledge now and then: somewhere to go wrong, and somewhere to land after a fall
     if (rng.chance(0.28)) {
